@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, FileText, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Calendar, FileText, AlertTriangle, CheckCircle } from 'lucide-react';
 import { Card, Button, Badge, LoadingSpinner } from '../components/common';
 import { versionApi } from '../services/api';
 
 interface DiffItem {
-    type: 'normal' | 'changed';
+    type: 'normal' | 'changed' | 'added' | 'removed';
     oldValue: string;
     newValue: string;
 }
@@ -23,6 +23,8 @@ export default function VersionCompare() {
         titleDiff: DiffItem[];
         contentDiff: DiffItem[];
     } | null>(null);
+    const [showTitleDiff, setShowTitleDiff] = useState(true);
+    const [showContentDiff, setShowContentDiff] = useState(true);
 
     useEffect(() => {
         const params = new URLSearchParams(location.search);
@@ -56,22 +58,51 @@ export default function VersionCompare() {
         }
     };
 
-    const renderDiffLine = (item: DiffItem, index: number) => {
+    const handleBack = () => {
+        const params = new URLSearchParams(location.search);
+        const siteId = params.get('siteId');
+        if (siteId) {
+            navigate(`/archives/${siteId}`);
+        } else {
+            navigate('/archives');
+        }
+    };
+
+    const renderDiffLine = (item: DiffItem, index: number, isOld: boolean) => {
         if (item.type === 'normal') {
             return (
-                <span key={index} className="text-slate-700">
+                <span key={`normal-${index}`} className="text-slate-700">
+                    {isOld ? item.oldValue : item.newValue}
+                </span>
+            );
+        } else if (item.type === 'changed') {
+            if (isOld) {
+                return (
+                    <span key={`old-${index}`} className="bg-red-100 text-red-800 px-0.5 rounded">
+                        {item.oldValue}
+                    </span>
+                );
+            } else {
+                return (
+                    <span key={`new-${index}`} className="bg-green-100 text-green-800 px-0.5 rounded">
+                        {item.newValue}
+                    </span>
+                );
+            }
+        } else if (item.type === 'removed') {
+            return (
+                <span key={`removed-${index}`} className="bg-red-100 text-red-800 px-0.5 rounded line-through">
                     {item.oldValue}
                 </span>
             );
-        } else {
+        } else if (item.type === 'added') {
             return (
-                <span key={index} className="bg-red-100 text-red-800 px-0.5 rounded">
-                    {item.oldValue || <span className="text-red-400">-</span>}
-                    <span className="text-green-600 mx-0.5">→</span>
-                    {item.newValue || <span className="text-green-400">+</span>}
+                <span key={`added-${index}`} className="bg-green-100 text-green-800 px-0.5 rounded">
+                    {item.newValue}
                 </span>
             );
         }
+        return null;
     };
 
     if (isLoading) {
@@ -86,7 +117,7 @@ export default function VersionCompare() {
         return (
             <div className="space-y-6">
                 <div className="flex items-center gap-4">
-                    <Button variant="ghost" onClick={() => navigate('/archives')}>
+                    <Button variant="ghost" onClick={handleBack}>
                         <ArrowLeft className="w-4 h-4 mr-2" />
                         返回档案库
                     </Button>
@@ -107,9 +138,9 @@ export default function VersionCompare() {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                    <Button variant="ghost" onClick={() => navigate('/archives')}>
+                    <Button variant="ghost" onClick={handleBack}>
                         <ArrowLeft className="w-4 h-4 mr-2" />
-                        返回档案库
+                        返回版本列表
                     </Button>
                     <h1 className="text-2xl font-bold text-slate-900">版本对比</h1>
                 </div>
@@ -120,7 +151,8 @@ export default function VersionCompare() {
                     <div className="p-4 border-b border-slate-200 bg-slate-50">
                         <div className="flex items-center gap-2 mb-2">
                             <Badge variant="info">版本 {version1?.id}</Badge>
-                            {diff?.titleChanged && <Badge variant="warning">已变更</Badge>}
+                            {diff?.titleChanged && <Badge variant="warning">标题已变更</Badge>}
+                            {diff?.contentChanged && <Badge variant="warning">正文已变更</Badge>}
                         </div>
                         <h3 className="font-semibold text-slate-900">{version1?.title || '无标题'}</h3>
                         <div className="flex items-center gap-2 mt-2 text-sm text-slate-500">
@@ -143,7 +175,8 @@ export default function VersionCompare() {
                     <div className="p-4 border-b border-slate-200 bg-slate-50">
                         <div className="flex items-center gap-2 mb-2">
                             <Badge variant="success">版本 {version2?.id}</Badge>
-                            {diff?.titleChanged && <Badge variant="warning">已变更</Badge>}
+                            {diff?.titleChanged && <Badge variant="warning">标题已变更</Badge>}
+                            {diff?.contentChanged && <Badge variant="warning">正文已变更</Badge>}
                         </div>
                         <h3 className="font-semibold text-slate-900">{version2?.title || '无标题'}</h3>
                         <div className="flex items-center gap-2 mt-2 text-sm text-slate-500">
@@ -167,30 +200,82 @@ export default function VersionCompare() {
                 <Card>
                     <div className="p-4 border-b border-slate-200">
                         <h3 className="font-semibold text-slate-900">差异详情</h3>
+                        <p className="text-sm text-slate-500 mt-1">红色标记为删除/变更内容，绿色标记为新增/变更内容</p>
                     </div>
                     <div className="p-4 space-y-6">
                         {diff?.titleChanged && (
                             <div>
-                                <div className="flex items-center gap-2 mb-3 text-sm font-medium text-slate-700">
-                                    <FileText size={16} />
-                                    标题变更
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                                        <FileText size={16} />
+                                        标题变更
+                                    </div>
+                                    <Button 
+                                        variant="ghost" 
+                                        size="sm"
+                                        onClick={() => setShowTitleDiff(!showTitleDiff)}
+                                    >
+                                        {showTitleDiff ? '隐藏详情' : '显示详情'}
+                                    </Button>
                                 </div>
-                                <div className="bg-slate-50 p-4 rounded-lg font-mono text-sm leading-relaxed">
-                                    {diff.titleDiff.map((item, index) => renderDiffLine(item, index))}
-                                </div>
+                                {showTitleDiff && (
+                                    <div className="bg-slate-50 p-4 rounded-lg">
+                                        <div className="mb-3">
+                                            <p className="text-xs text-slate-500 mb-1">旧版本标题：</p>
+                                            <div className="font-medium text-slate-900">
+                                                {diff.titleDiff.map((item, index) => renderDiffLine(item, index, true))}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-slate-500 mb-1">新版本标题：</p>
+                                            <div className="font-medium text-slate-900">
+                                                {diff.titleDiff.map((item, index) => renderDiffLine(item, index, false))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
                         {diff?.contentChanged && (
                             <div>
-                                <div className="flex items-center gap-2 mb-3 text-sm font-medium text-slate-700">
-                                    <FileText size={16} />
-                                    正文变更
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                                        <FileText size={16} />
+                                        正文变更
+                                    </div>
+                                    <Button 
+                                        variant="ghost" 
+                                        size="sm"
+                                        onClick={() => setShowContentDiff(!showContentDiff)}
+                                    >
+                                        {showContentDiff ? '隐藏详情' : '显示详情'}
+                                    </Button>
                                 </div>
-                                <div className="bg-slate-50 p-4 rounded-lg font-mono text-sm leading-relaxed max-h-96 overflow-y-auto">
-                                    {diff.contentDiff.map((item, index) => renderDiffLine(item, index))}
-                                    {' '}
-                                </div>
+                                {showContentDiff && (
+                                    <div className="space-y-4">
+                                        <div className="bg-slate-50 p-4 rounded-lg">
+                                            <p className="text-xs text-slate-500 mb-2">旧版本正文（仅显示前500字符）：</p>
+                                            <div className="font-mono text-sm text-slate-700 max-h-96 overflow-y-auto">
+                                                {diff.contentDiff.slice(0, 100).map((item, index) => renderDiffLine(item, index, true))}
+                                                {' '}
+                                                {diff.contentDiff.length > 100 && (
+                                                    <span className="text-slate-400">...（共 {diff.contentDiff.length} 处变更）</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="bg-slate-50 p-4 rounded-lg">
+                                            <p className="text-xs text-slate-500 mb-2">新版本正文（仅显示前500字符）：</p>
+                                            <div className="font-mono text-sm text-slate-700 max-h-96 overflow-y-auto">
+                                                {diff.contentDiff.slice(0, 100).map((item, index) => renderDiffLine(item, index, false))}
+                                                {' '}
+                                                {diff.contentDiff.length > 100 && (
+                                                    <span className="text-slate-400">...（共 {diff.contentDiff.length} 处变更）</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
@@ -201,9 +286,7 @@ export default function VersionCompare() {
                 <Card>
                     <div className="flex flex-col items-center justify-center py-12">
                         <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                            </svg>
+                            <CheckCircle className="w-8 h-8 text-green-600" />
                         </div>
                         <h3 className="text-lg font-semibold text-slate-900 mb-2">两个版本完全相同</h3>
                         <p className="text-slate-500">标题和正文内容均未发生变化</p>

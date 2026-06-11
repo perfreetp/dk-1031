@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Archive, Calendar, Search, Eye, GitCompare, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Archive, Calendar, Search, Eye, GitCompare, CheckCircle, XCircle, Loader2, Check, Square } from 'lucide-react';
 import { Card, Button, Badge, EmptyState, LoadingSpinner } from '../components/common';
-import { siteApi, versionApi, tagApi } from '../services/api';
-import type { Site, Version, Tag } from '../types';
+import { siteApi, versionApi } from '../services/api';
+import type { Site, Version } from '../types';
 
 export default function Archives() {
     const navigate = useNavigate();
@@ -19,6 +19,8 @@ export default function Archives() {
     const [searchQuery, setSearchQuery] = useState('');
     const [showArchived, setShowArchived] = useState(false);
     const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+    const [selectedVersions, setSelectedVersions] = useState<number[]>([]);
+    const [groupBy, setGroupBy] = useState<'all' | 'active' | 'archived' | 'important'>('all');
 
     useEffect(() => {
         loadSites();
@@ -39,6 +41,21 @@ export default function Archives() {
         }
     }, [selectedSite, showArchived]);
 
+    useEffect(() => {
+        if (searchParams.get('compareWith')) {
+            const compareId = parseInt(searchParams.get('compareWith')!);
+            const currentVersion = versions.find(v => v.id === compareId);
+            const versionsWithoutCurrent = versions.filter(v => v.id !== compareId);
+            
+            if (currentVersion && versionsWithoutCurrent.length > 0) {
+                const prevVersion = versionsWithoutCurrent[0];
+                if (prevVersion) {
+                    handleCompare(currentVersion, prevVersion);
+                }
+            }
+        }
+    }, [searchParams, versions]);
+
     const loadSites = async () => {
         try {
             setIsLoading(true);
@@ -54,9 +71,10 @@ export default function Archives() {
     const loadVersions = async (siteId: number) => {
         try {
             setIsLoadingVersions(true);
+            setSelectedVersions([]);
             const response = await versionApi.getVersions(siteId, { 
                 pageSize: 50,
-                archived: showArchived ? true : undefined 
+                archived: showArchived ? undefined : undefined
             });
             setVersions(response.data.data);
             setPagination(response.data.pagination);
@@ -96,22 +114,54 @@ export default function Archives() {
         }
     };
 
-    const handleCompare = (version1: Version, version2: Version) => {
-        navigate(`/archives/compare?version1=${version1.id}&version2=${version2.id}`);
+    const handleToggleSelect = (versionId: number) => {
+        setSelectedVersions(prev => {
+            if (prev.includes(versionId)) {
+                return prev.filter(id => id !== versionId);
+            } else if (prev.length < 2) {
+                return [...prev, versionId];
+            } else {
+                return [prev[1], versionId];
+            }
+        });
+    };
+
+    const handleCompare = (v1?: Version, v2?: Version) => {
+        const version1 = v1 || versions.find(v => v.id === selectedVersions[0]);
+        const version2 = v2 || versions.find(v => v.id === selectedVersions[1]);
+
+        if (version1 && version2 && selectedSite) {
+            navigate(`/archives/compare?version1=${version1.id}&version2=${version2.id}&siteId=${selectedSite.id}`);
+        }
     };
 
     const handleSiteSelect = (site: Site) => {
         setSelectedSite(site);
+        setSelectedVersions([]);
         navigate(`/archives/${site.id}`);
         setSearchQuery('');
     };
 
-    const filteredVersions = versions.filter(v =>
-        !searchQuery || 
-        v.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        v.content?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        v.summary?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filteredVersions = versions.filter(v => {
+        if (!searchQuery && groupBy === 'all') return true;
+        
+        const matchesSearch = !searchQuery || 
+            v.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            v.content?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            v.summary?.toLowerCase().includes(searchQuery.toLowerCase());
+        
+        const matchesGroup = groupBy === 'all' || 
+            (groupBy === 'archived' && v.is_archived) ||
+            (groupBy === 'active' && !v.is_archived);
+        
+        return matchesSearch && matchesGroup;
+    });
+
+    const groupedVersions = {
+        active: filteredVersions.filter(v => !v.is_archived),
+        archived: filteredVersions.filter(v => v.is_archived),
+        important: filteredVersions.filter(v => !v.is_archived).slice(0, 5)
+    };
 
     if (isLoading) {
         return (
@@ -141,17 +191,12 @@ export default function Archives() {
                     <h1 className="text-2xl font-bold text-slate-900">档案库</h1>
                     <p className="text-slate-500 mt-1">浏览和管理所有历史版本</p>
                 </div>
-                <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-2 text-sm text-slate-600">
-                        <input
-                            type="checkbox"
-                            checked={showArchived}
-                            onChange={(e) => setShowArchived(e.target.checked)}
-                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        显示已归档版本
-                    </label>
-                </div>
+                {selectedVersions.length === 2 && (
+                    <Button onClick={() => handleCompare()}>
+                        <GitCompare className="w-4 h-4 mr-2" />
+                        对比选中的版本
+                    </Button>
+                )}
             </div>
 
             <div className="grid grid-cols-12 gap-6">
@@ -194,18 +239,34 @@ export default function Archives() {
                                     {selectedSite ? `${selectedSite.name} 的版本历史` : '请选择一个站点'}
                                 </h3>
                                 {selectedSite && (
-                                    <div className="relative">
+                                    <div className="flex gap-2">
+                                        <select
+                                            value={groupBy}
+                                            onChange={(e) => setGroupBy(e.target.value as any)}
+                                            className="px-3 py-1 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        >
+                                            <option value="all">全部</option>
+                                            <option value="active">活跃</option>
+                                            <option value="archived">已归档</option>
+                                            <option value="important">重要更新</option>
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+                            {selectedSite && (
+                                <div className="mt-3 flex gap-2">
+                                    <div className="relative flex-1">
                                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                         <input
                                             type="text"
                                             value={searchQuery}
                                             onChange={(e) => setSearchQuery(e.target.value)}
                                             placeholder="搜索标题、摘要或内容..."
-                                            className="pl-9 pr-4 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
+                                            className="pl-9 pr-4 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
                                         />
                                     </div>
-                                )}
-                            </div>
+                                </div>
+                            )}
                         </div>
 
                         {!selectedSite ? (
@@ -221,80 +282,108 @@ export default function Archives() {
                         ) : filteredVersions.length === 0 ? (
                             <EmptyState
                                 icon={<Archive size={48} />}
-                                title={searchQuery ? '未找到匹配结果' : '暂无版本'}
-                                description={searchQuery ? '尝试调整搜索关键词' : '该站点还没有采集记录'}
+                                title={searchQuery || groupBy !== 'all' ? '未找到匹配结果' : '暂无版本'}
+                                description={searchQuery || groupBy !== 'all' ? '尝试调整筛选条件' : '该站点还没有采集记录'}
                             />
                         ) : (
                             <div className="divide-y divide-slate-200">
+                                {groupBy !== 'all' && (
+                                    <div className="p-3 bg-slate-50 border-b border-slate-200">
+                                        <p className="text-sm text-slate-600">
+                                            {groupBy === 'active' && `活跃版本：${groupedVersions.active.length} 个`}
+                                            {groupBy === 'archived' && `已归档版本：${groupedVersions.archived.length} 个`}
+                                            {groupBy === 'important' && `最近更新：${groupedVersions.important.length} 个`}
+                                        </p>
+                                    </div>
+                                )}
                                 {filteredVersions.map((version, index) => (
                                     <div key={version.id} className="p-4 hover:bg-slate-50 transition-colors">
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <Calendar size={14} className="text-slate-400" />
-                                                    <span className="text-sm text-slate-500">
-                                                        {new Date(version.created_at).toLocaleString('zh-CN')}
-                                                    </span>
-                                                    <Badge variant={version.is_archived ? 'default' : 'info'}>
-                                                        {version.is_archived ? '已归档' : '活跃'}
-                                                    </Badge>
-                                                    {version.site && (
-                                                        <Badge variant="info">
-                                                            {version.site.name}
-                                                        </Badge>
-                                                    )}
-                                                </div>
-                                                <h4 className="font-medium text-slate-900">
-                                                    {version.title || '无标题'}
-                                                </h4>
-                                                {version.summary && (
-                                                    <p className="text-sm text-slate-600 mt-1 line-clamp-2">
-                                                        {version.summary}
-                                                    </p>
-                                                )}
-                                                {version.content && (
-                                                    <p className="text-sm text-slate-500 mt-1 line-clamp-2">
-                                                        {version.content.substring(0, 200)}
-                                                        {version.content.length > 200 && '...'}
-                                                    </p>
-                                                )}
-                                            </div>
-                                            <div className="flex gap-2 ml-4">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => navigate(`/archives/${version.id}`)}
-                                                    title="查看详情"
-                                                >
-                                                    <Eye className="w-4 h-4" />
-                                                </Button>
-                                                {index > 0 && (
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => handleCompare(filteredVersions[index - 1], version)}
-                                                        title="与上一版本对比"
-                                                    >
-                                                        <GitCompare className="w-4 h-4" />
-                                                    </Button>
-                                                )}
-                                                {version.is_archived ? (
-                                                    <Button
-                                                        variant="secondary"
-                                                        size="sm"
-                                                        onClick={() => handleUnarchiveVersion(version.id)}
-                                                    >
-                                                        取消归档
-                                                    </Button>
+                                        <div className="flex items-start gap-3">
+                                            <button
+                                                onClick={() => handleToggleSelect(version.id)}
+                                                className={`mt-1 p-1 rounded transition-colors ${
+                                                    selectedVersions.includes(version.id)
+                                                        ? 'bg-blue-600 text-white'
+                                                        : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                                                }`}
+                                            >
+                                                {selectedVersions.includes(version.id) ? (
+                                                    <Check size={16} />
                                                 ) : (
-                                                    <Button
-                                                        variant="secondary"
-                                                        size="sm"
-                                                        onClick={() => handleArchiveVersion(version.id)}
-                                                    >
-                                                        归档
-                                                    </Button>
+                                                    <Square size={16} />
                                                 )}
+                                            </button>
+                                            
+                                            <div className="flex-1">
+                                                <div className="flex items-start justify-between">
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <Calendar size={14} className="text-slate-400" />
+                                                            <span className="text-sm text-slate-500">
+                                                                {new Date(version.created_at).toLocaleString('zh-CN')}
+                                                            </span>
+                                                            <Badge variant={version.is_archived ? 'default' : 'info'}>
+                                                                {version.is_archived ? '已归档' : '活跃'}
+                                                            </Badge>
+                                                            {version.site && (
+                                                                <Badge variant="info">
+                                                                    {version.site.name}
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                        <h4 className="font-medium text-slate-900">
+                                                            {version.title || '无标题'}
+                                                        </h4>
+                                                        {version.summary && (
+                                                            <p className="text-sm text-slate-600 mt-1 line-clamp-2">
+                                                                {version.summary}
+                                                            </p>
+                                                        )}
+                                                        {version.content && (
+                                                            <p className="text-sm text-slate-500 mt-1 line-clamp-2">
+                                                                {version.content.substring(0, 200)}
+                                                                {version.content.length > 200 && '...'}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex gap-2 ml-4">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => navigate(`/archives/version/${version.id}?siteId=${selectedSite?.id}`)}
+                                                            title="查看详情"
+                                                        >
+                                                            <Eye className="w-4 h-4" />
+                                                        </Button>
+                                                        {index > 0 && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => handleCompare(filteredVersions[index - 1], version)}
+                                                                title="与上一版本对比"
+                                                            >
+                                                                <GitCompare className="w-4 h-4" />
+                                                            </Button>
+                                                        )}
+                                                        {version.is_archived ? (
+                                                            <Button
+                                                                variant="secondary"
+                                                                size="sm"
+                                                                onClick={() => handleUnarchiveVersion(version.id)}
+                                                            >
+                                                                取消归档
+                                                            </Button>
+                                                        ) : (
+                                                            <Button
+                                                                variant="secondary"
+                                                                size="sm"
+                                                                onClick={() => handleArchiveVersion(version.id)}
+                                                            >
+                                                                归档
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

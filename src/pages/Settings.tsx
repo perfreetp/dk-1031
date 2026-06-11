@@ -137,7 +137,18 @@ export default function SettingsPage() {
     };
 
     const generateResultsCSV = (versions: any[]) => {
-        const headers = ['版本ID', '站点名称', '站点URL', '标题', '摘要', '是否归档', '采集时间'];
+        const headers = [
+            '版本ID', 
+            '站点名称', 
+            '站点URL', 
+            '标题', 
+            '摘要', 
+            '是否归档',
+            '状态',
+            '内容长度',
+            '采集时间',
+            '版本创建时间'
+        ];
         const rows = versions.map(v => [
             v.id,
             v.site_name || '',
@@ -145,7 +156,10 @@ export default function SettingsPage() {
             v.title || '',
             v.summary || '',
             v.is_archived ? '是' : '否',
-            new Date(v.created_at).toLocaleString('zh-CN')
+            v.is_archived ? '已归档' : '活跃',
+            v.content ? v.content.length : 0,
+            new Date(v.created_at).toLocaleString('zh-CN'),
+            v.created_at
         ]);
         
         return [headers, ...rows]

@@ -10,8 +10,8 @@ export default function Sites() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const { sites, tags, isLoading, pagination, setSites, setTags, setLoading, setPagination } = useSiteStore();
-    const [statusFilter, setStatusFilter] = useState<string>('');
-    const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState<string>(searchParams.get('status') || '');
+    const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
     const [menuOpen, setMenuOpen] = useState<number | null>(null);
     const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -19,6 +19,11 @@ export default function Sites() {
         loadSites();
         loadTags();
     }, [searchParams]);
+
+    useEffect(() => {
+        setStatusFilter(searchParams.get('status') || '');
+        setSearchQuery(searchParams.get('search') || '');
+    }, []);
 
     const loadSites = async () => {
         try {

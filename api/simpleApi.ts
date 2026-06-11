@@ -136,7 +136,7 @@ router.get('/sites/:id', (req, res) => {
 
 router.post('/sites', (req, res) => {
     try {
-        const { url, name, description, frequency, rules, tags } = req.body;
+        const { url, name, description, frequency, rules, tags, retention_policy, archive_rules } = req.body;
         
         if (!url || !name) {
             return res.status(400).json({ success: false, error: 'URL和名称是必填项' });
@@ -150,6 +150,16 @@ router.post('/sites', (req, res) => {
             status: 1,
             frequency: frequency || 'daily',
             rules: JSON.stringify(rules || {}),
+            retention_policy: JSON.stringify(retention_policy || {
+                maxVersions: 30,
+                retainDays: 90,
+                autoArchive: true
+            }),
+            archive_rules: JSON.stringify(archive_rules || {
+                autoArchive: true,
+                archiveAfterDays: 30,
+                importantKeywords: []
+            }),
             tagIds: tags || [],
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
@@ -167,6 +177,8 @@ router.post('/sites', (req, res) => {
                 ...site, 
                 status: 'active', 
                 rules: rules || {}, 
+                retention_policy: site.retention_policy,
+                archive_rules: site.archive_rules,
                 tags: siteTags 
             } 
         });
@@ -181,7 +193,7 @@ router.put('/sites/:id', (req, res) => {
         const site = db.getSite(siteId);
         if (!site) return res.status(404).json({ success: false, error: '站点不存在' });
 
-        const { url, name, description, frequency, rules, tagIds } = req.body;
+        const { url, name, description, frequency, rules, tagIds, retention_policy, archive_rules } = req.body;
         
         const updates: any = {};
         if (url !== undefined) updates.url = url;
@@ -190,6 +202,8 @@ router.put('/sites/:id', (req, res) => {
         if (frequency !== undefined) updates.frequency = frequency;
         if (rules !== undefined) updates.rules = JSON.stringify(rules);
         if (tagIds !== undefined) updates.tagIds = tagIds;
+        if (retention_policy !== undefined) updates.retention_policy = JSON.stringify(retention_policy);
+        if (archive_rules !== undefined) updates.archive_rules = JSON.stringify(archive_rules);
         updates.updated_at = new Date().toISOString();
 
         const updated = db.updateSite(siteId, updates);

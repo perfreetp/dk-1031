@@ -8,6 +8,7 @@ import Alerts from './pages/Alerts';
 import Logs from './pages/Logs';
 import Archives from './pages/Archives';
 import VersionCompare from './pages/VersionCompare';
+import VersionDetail from './pages/VersionDetail';
 import Settings from './pages/Settings';
 
 const queryClient = new QueryClient({
@@ -33,6 +34,7 @@ function App() {
                         <Route path="archives" element={<Archives />} />
                         <Route path="archives/:siteId" element={<Archives />} />
                         <Route path="archives/compare" element={<VersionCompare />} />
+                        <Route path="archives/version/:versionId" element={<VersionDetail />} />
                         <Route path="archives/:siteId/:versionId" element={<Archives />} />
                         <Route path="alerts" element={<Alerts />} />
                         <Route path="logs" element={<Logs />} />
