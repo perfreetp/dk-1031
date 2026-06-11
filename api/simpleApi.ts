@@ -97,6 +97,8 @@ router.get('/sites', (req, res) => {
             ...site,
             status: site.status === 1 ? 'active' : site.status === 2 ? 'paused' : 'error',
             rules: typeof site.rules === 'string' ? JSON.parse(site.rules || '{}') : site.rules || {},
+            retention_policy: typeof site.retention_policy === 'string' ? JSON.parse(site.retention_policy || '{}') : site.retention_policy || {},
+            archive_rules: typeof site.archive_rules === 'string' ? JSON.parse(site.archive_rules || '{}') : site.archive_rules || {},
             tags: (site.tagIds || []).map((tagId: number) => allTags.find(t => t.id === tagId)).filter(Boolean)
         }));
 
@@ -126,6 +128,8 @@ router.get('/sites/:id', (req, res) => {
                 ...site,
                 status: site.status === 1 ? 'active' : site.status === 2 ? 'paused' : 'error',
                 rules: typeof site.rules === 'string' ? JSON.parse(site.rules || '{}') : site.rules || {},
+                retention_policy: typeof site.retention_policy === 'string' ? JSON.parse(site.retention_policy || '{}') : site.retention_policy || {},
+                archive_rules: typeof site.archive_rules === 'string' ? JSON.parse(site.archive_rules || '{}') : site.archive_rules || {},
                 tags: siteTags
             }
         });
@@ -267,16 +271,35 @@ router.post('/sites/:id/crawl', (req, res) => {
         const site = db.getSite(siteId);
         if (!site) return res.status(404).json({ success: false, error: '站点不存在' });
 
+        // Check for important keywords
+        const archiveRules = typeof site.archive_rules === 'string' 
+            ? JSON.parse(site.archive_rules) 
+            : site.archive_rules || {};
+        const importantKeywords = archiveRules.importantKeywords || [];
+        
+        const mockTitle = `${site.name} - 第 ${(db.getVersions().filter(v => v.site_id === siteId).length + 1)} 次采集`;
+        const mockContent = `这是 ${site.name} (${site.url}) 的内容摘要。\n\n采集时间: ${new Date().toLocaleString('zh-CN')}\n\n页面内容已成功抓取，等待实际采集任务执行后显示真实内容。`;
+        const mockSummary = `第 ${(db.getVersions().filter(v => v.site_id === siteId).length + 1)} 次采集记录`;
+
+        // Check if any keyword matches
+        let isImportant = 0;
+        if (importantKeywords.length > 0) {
+            const allText = `${mockTitle} ${mockContent} ${mockSummary}`.toLowerCase();
+            isImportant = importantKeywords.some(keyword => 
+                allText.includes(keyword.toLowerCase())
+            ) ? 1 : 0;
+        }
+
         // Simulate crawling - in real app, this would fetch the actual website
         const version = {
             id: db.nextId('versions'),
             site_id: siteId,
-            title: `${site.name} - 第 ${(db.getVersions().filter(v => v.site_id === siteId).length + 1)} 次采集`,
-            content: `这是 ${site.name} (${site.url}) 的内容摘要。\n\n采集时间: ${new Date().toLocaleString('zh-CN')}\n\n页面内容已成功抓取，等待实际采集任务执行后显示真实内容。`,
-            summary: `第 ${(db.getVersions().filter(v => v.site_id === siteId).length + 1)} 次采集记录`,
+            title: mockTitle,
+            content: mockContent,
+            summary: mockSummary,
             html: `<html><body><h1>${site.name}</h1><p>采集时间: ${new Date().toLocaleString('zh-CN')}</p></body></html>`,
             is_archived: 0,
-            is_important: 0,
+            is_important: isImportant,
             created_at: new Date().toISOString()
         };
         db.addVersion(version);
@@ -763,7 +786,9 @@ router.get('/stats/dashboard', (req, res) => {
         // Get sites by tag
         const allTags = db.getTags();
         const sitesByTag = allTags.map(tag => ({
+            tagId: tag.id,
             tag: tag.name,
+            color: tag.color,
             count: sites.filter(s => s.tagIds && s.tagIds.includes(tag.id)).length
         }));
 

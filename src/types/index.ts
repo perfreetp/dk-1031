@@ -142,7 +142,7 @@ export interface DashboardStats {
     totalAlerts: number;
     unresolvedAlerts: number;
     recentAlerts: Alert[];
-    sitesByTag: { tag: string; count: number }[];
+    sitesByTag: { tagId: number; tag: string; color: string; count: number }[];
     crawlTrend: { date: string; count: number }[];
 }
 

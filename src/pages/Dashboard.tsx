@@ -185,8 +185,9 @@ export default function Dashboard() {
                             {stats.sitesByTag.map((item, index) => (
                                 <div
                                     key={index}
-                                    className="bg-slate-50 rounded-lg p-4 hover:bg-slate-100 transition-colors cursor-pointer"
-                                    onClick={() => navigate(`/sites?tag=${encodeURIComponent(item.tag)}`)}
+                                    className="bg-slate-50 rounded-lg p-4 hover:bg-slate-100 transition-colors cursor-pointer relative overflow-hidden"
+                                    style={{ borderLeft: `4px solid ${item.color}` }}
+                                    onClick={() => navigate(`/sites?tagId=${item.tagId}`)}
                                 >
                                     <p className="text-2xl font-bold text-slate-900">{item.count}</p>
                                     <p className="text-sm text-slate-600 mt-1">{item.tag}</p>
