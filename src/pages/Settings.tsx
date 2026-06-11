@@ -1,24 +1,57 @@
-import { useState } from 'react';
-import { Settings, Bell, Database, Tag, Shield } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Settings, Bell, Database, Tag, Shield, Download, CheckCircle, XCircle, Loader2, FileText } from 'lucide-react';
 import { Card, CardHeader, CardContent, Button } from '../components/common';
-import { tagApi } from '../services/api';
+import { tagApi, logApi, siteApi, versionApi } from '../services/api';
 import type { Tag as TagType } from '../types';
 
 export default function SettingsPage() {
     const [tags, setTags] = useState<TagType[]>([]);
     const [newTagName, setNewTagName] = useState('');
     const [newTagColor, setNewTagColor] = useState('#3b82f6');
+    const [isLoadingTags, setIsLoadingTags] = useState(true);
+    const [isAddingTag, setIsAddingTag] = useState(false);
+    const [isExportingLogs, setIsExportingLogs] = useState(false);
+    const [isExportingResults, setIsExportingResults] = useState(false);
+    const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+    useEffect(() => {
+        loadTags();
+    }, []);
+
+    const loadTags = async () => {
+        try {
+            setIsLoadingTags(true);
+            const response = await tagApi.getTags();
+            setTags(response.data);
+        } catch (error: any) {
+            showNotification('error', error.message || '加载标签失败');
+        } finally {
+            setIsLoadingTags(false);
+        }
+    };
+
+    const showNotification = (type: 'success' | 'error', message: string) => {
+        setNotification({ type, message });
+        setTimeout(() => setNotification(null), 3000);
+    };
 
     const handleAddTag = async () => {
-        if (!newTagName.trim()) return;
+        if (!newTagName.trim()) {
+            showNotification('error', '请输入标签名称');
+            return;
+        }
 
         try {
-            const response = await tagApi.createTag({ name: newTagName, color: newTagColor });
+            setIsAddingTag(true);
+            const response = await tagApi.createTag({ name: newTagName.trim(), color: newTagColor });
             setTags([...tags, response.data]);
             setNewTagName('');
             setNewTagColor('#3b82f6');
-        } catch (error) {
-            console.error('Failed to create tag:', error);
+            showNotification('success', '标签添加成功');
+        } catch (error: any) {
+            showNotification('error', error.message || '添加标签失败');
+        } finally {
+            setIsAddingTag(false);
         }
     };
 
@@ -28,13 +61,125 @@ export default function SettingsPage() {
         try {
             await tagApi.deleteTag(id);
             setTags(tags.filter(t => t.id !== id));
-        } catch (error) {
-            console.error('Failed to delete tag:', error);
+            showNotification('success', '标签已删除');
+        } catch (error: any) {
+            showNotification('error', error.message || '删除标签失败');
         }
+    };
+
+    const handleExportLogs = async () => {
+        try {
+            setIsExportingLogs(true);
+            const response = await logApi.exportLogs();
+            
+            if (response.success && response.data) {
+                const logs = response.data;
+                const csvContent = generateLogsCSV(logs);
+                downloadFile(csvContent, '运行日志导出', 'logs_export.csv', 'text/csv');
+                showNotification('success', `成功导出 ${logs.length} 条日志`);
+            } else {
+                showNotification('error', response.error || '导出日志失败');
+            }
+        } catch (error: any) {
+            showNotification('error', error.message || '导出日志失败');
+        } finally {
+            setIsExportingLogs(false);
+        }
+    };
+
+    const generateLogsCSV = (logs: any[]) => {
+        const headers = ['ID', '站点ID', '级别', '消息', '详情', '时间'];
+        const rows = logs.map(log => [
+            log.id,
+            log.site_id || '',
+            log.level,
+            log.message,
+            log.details || '',
+            new Date(log.created_at).toLocaleString('zh-CN')
+        ]);
+        
+        return [headers, ...rows]
+            .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+            .join('\n');
+    };
+
+    const handleExportResults = async () => {
+        try {
+            setIsExportingResults(true);
+            
+            const sitesResponse = await siteApi.getSites({ pageSize: 1000 });
+            const sites = sitesResponse.data.data;
+            
+            const allVersions: any[] = [];
+            for (const site of sites) {
+                try {
+                    const versionResponse = await versionApi.getVersions(site.id, { pageSize: 100 });
+                    if (versionResponse.data?.data) {
+                        allVersions.push(...versionResponse.data.data.map((v: any) => ({
+                            ...v,
+                            site_name: site.name,
+                            site_url: site.url
+                        })));
+                    }
+                } catch (error) {
+                    console.error(`Failed to load versions for site ${site.id}:`, error);
+                }
+            }
+
+            const csvContent = generateResultsCSV(allVersions);
+            downloadFile(csvContent, '巡检结果导出', 'inspection_results.csv', 'text/csv');
+            showNotification('success', `成功导出 ${allVersions.length} 条巡检记录`);
+        } catch (error: any) {
+            showNotification('error', error.message || '导出巡检结果失败');
+        } finally {
+            setIsExportingResults(false);
+        }
+    };
+
+    const generateResultsCSV = (versions: any[]) => {
+        const headers = ['版本ID', '站点名称', '站点URL', '标题', '摘要', '是否归档', '采集时间'];
+        const rows = versions.map(v => [
+            v.id,
+            v.site_name || '',
+            v.site_url || '',
+            v.title || '',
+            v.summary || '',
+            v.is_archived ? '是' : '否',
+            new Date(v.created_at).toLocaleString('zh-CN')
+        ]);
+        
+        return [headers, ...rows]
+            .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+            .join('\n');
+    };
+
+    const downloadFile = (content: string, title: string, filename: string, mimeType: string) => {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     };
 
     return (
         <div className="space-y-6 max-w-4xl">
+            {notification && (
+                <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg ${
+                    notification.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+                }`}>
+                    {notification.type === 'success' ? (
+                        <CheckCircle className="w-5 h-5" />
+                    ) : (
+                        <XCircle className="w-5 h-5" />
+                    )}
+                    <span>{notification.message}</span>
+                </div>
+            )}
+
             <div>
                 <h1 className="text-2xl font-bold text-slate-900">设置</h1>
                 <p className="text-slate-500 mt-1">管理系统的各项配置</p>
@@ -56,6 +201,7 @@ export default function SettingsPage() {
                                 onChange={(e) => setNewTagName(e.target.value)}
                                 placeholder="新标签名称"
                                 className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                onKeyPress={(e) => e.key === 'Enter' && handleAddTag()}
                             />
                             <input
                                 type="color"
@@ -63,31 +209,111 @@ export default function SettingsPage() {
                                 onChange={(e) => setNewTagColor(e.target.value)}
                                 className="w-12 h-10 border border-slate-300 rounded-lg cursor-pointer"
                             />
-                            <Button onClick={handleAddTag}>添加</Button>
+                            <Button 
+                                onClick={handleAddTag} 
+                                disabled={isAddingTag}
+                            >
+                                {isAddingTag ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                    '添加'
+                                )}
+                            </Button>
                         </div>
 
-                        <div className="flex flex-wrap gap-2">
-                            {tags.map((tag) => (
-                                <div
-                                    key={tag.id}
-                                    className="flex items-center gap-2 px-3 py-1 rounded-full"
-                                    style={{ backgroundColor: `${tag.color}20` }}
-                                >
-                                    <span
-                                        className="w-3 h-3 rounded-full"
-                                        style={{ backgroundColor: tag.color }}
-                                    />
-                                    <span className="text-sm font-medium" style={{ color: tag.color }}>
-                                        {tag.name}
-                                    </span>
-                                    <button
-                                        onClick={() => handleDeleteTag(tag.id)}
-                                        className="text-slate-400 hover:text-red-600"
+                        {isLoadingTags ? (
+                            <div className="flex items-center justify-center py-8">
+                                <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
+                            </div>
+                        ) : tags.length === 0 ? (
+                            <div className="text-center text-slate-500 py-4">
+                                暂无标签
+                            </div>
+                        ) : (
+                            <div className="flex flex-wrap gap-2">
+                                {tags.map((tag) => (
+                                    <div
+                                        key={tag.id}
+                                        className="flex items-center gap-2 px-3 py-1 rounded-full"
+                                        style={{ backgroundColor: `${tag.color}20` }}
                                     >
-                                        ×
-                                    </button>
-                                </div>
-                            ))}
+                                        <span
+                                            className="w-3 h-3 rounded-full"
+                                            style={{ backgroundColor: tag.color }}
+                                        />
+                                        <span className="text-sm font-medium" style={{ color: tag.color }}>
+                                            {tag.name}
+                                        </span>
+                                        <button
+                                            onClick={() => handleDeleteTag(tag.id)}
+                                            className="text-slate-400 hover:text-red-600 transition-colors"
+                                            title="删除标签"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <div className="flex items-center gap-2">
+                        <FileText className="w-5 h-5 text-blue-600" />
+                        <h3 className="font-semibold text-slate-900">数据导出</h3>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                            <div>
+                                <p className="font-medium text-slate-900">运行日志导出</p>
+                                <p className="text-sm text-slate-500">导出所有系统运行日志（CSV格式）</p>
+                            </div>
+                            <Button 
+                                variant="secondary" 
+                                onClick={handleExportLogs}
+                                disabled={isExportingLogs}
+                            >
+                                {isExportingLogs ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                        导出中...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Download className="w-4 h-4 mr-2" />
+                                        导出日志
+                                    </>
+                                )}
+                            </Button>
+                        </div>
+
+                        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                            <div>
+                                <p className="font-medium text-slate-900">巡检结果导出</p>
+                                <p className="text-sm text-slate-500">导出所有站点的巡检记录（CSV格式）</p>
+                            </div>
+                            <Button 
+                                variant="secondary" 
+                                onClick={handleExportResults}
+                                disabled={isExportingResults}
+                            >
+                                {isExportingResults ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                        导出中...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Download className="w-4 h-4 mr-2" />
+                                        导出结果
+                                    </>
+                                )}
+                            </Button>
                         </div>
                     </div>
                 </CardContent>

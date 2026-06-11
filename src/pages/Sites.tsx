@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus, Search, Filter, MoreVertical, Pause, Play, Trash2, Edit, Eye, RefreshCw, Globe } from 'lucide-react';
+import { Plus, Search, MoreVertical, Pause, Play, Trash2, Edit, Eye, RefreshCw, Globe } from 'lucide-react';
 import { Card, Button, Badge, EmptyState, LoadingSpinner } from '../components/common';
 import { siteApi, tagApi } from '../services/api';
 import { useSiteStore } from '../stores';
@@ -10,37 +10,44 @@ export default function Sites() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const { sites, tags, isLoading, pagination, setSites, setTags, setLoading, setPagination } = useSiteStore();
-    const [selectedTags, setSelectedTags] = useState<number[]>([]);
     const [statusFilter, setStatusFilter] = useState<string>('');
     const [searchQuery, setSearchQuery] = useState('');
     const [menuOpen, setMenuOpen] = useState<number | null>(null);
+    const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
     useEffect(() => {
         loadSites();
         loadTags();
     }, [searchParams]);
 
-    useEffect(() => {
-        setTags(tags);
-    }, [tags]);
-
     const loadSites = async () => {
         try {
             setLoading(true);
-            const params = {
+            const params: any = {
                 page: parseInt(searchParams.get('page') || '1'),
                 pageSize: 20,
-                status: searchParams.get('status') || undefined,
-                tagId: searchParams.get('tagId') ? parseInt(searchParams.get('tagId')!) : undefined,
-                search: searchParams.get('search') || undefined,
-                sortBy: searchParams.get('sortBy') || 'created_at',
-                sortOrder: searchParams.get('sortOrder') || 'desc',
             };
+            
+            const status = searchParams.get('status');
+            const tagId = searchParams.get('tagId');
+            const search = searchParams.get('search');
+            
+            if (status) params.status = status;
+            if (tagId) params.tagId = parseInt(tagId);
+            if (search) params.search = search;
+            
+            params.sortBy = searchParams.get('sortBy') || 'created_at';
+            params.sortOrder = searchParams.get('sortOrder') || 'desc';
+
             const response = await siteApi.getSites(params);
             setSites(response.data.data);
             setPagination(response.data.pagination);
-        } catch (error) {
+            
+            // Update filter states
+            setStatusFilter(status || '');
+        } catch (error: any) {
             console.error('Failed to load sites:', error);
+            showNotification('error', error.message || '加载站点失败');
         } finally {
             setLoading(false);
         }
@@ -50,9 +57,14 @@ export default function Sites() {
         try {
             const response = await tagApi.getTags();
             setTags(response.data);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Failed to load tags:', error);
         }
+    };
+
+    const showNotification = (type: 'success' | 'error', message: string) => {
+        setNotification({ type, message });
+        setTimeout(() => setNotification(null), 3000);
     };
 
     const handleSearch = (e: React.FormEvent) => {
@@ -76,15 +88,29 @@ export default function Sites() {
         }
         newParams.set('page', '1');
         setSearchParams(newParams);
-        setStatusFilter(status);
+    };
+
+    const handleTagFilter = (tagId: number) => {
+        const newParams = new URLSearchParams(searchParams);
+        const currentTagId = searchParams.get('tagId');
+        
+        if (currentTagId === String(tagId)) {
+            newParams.delete('tagId');
+        } else {
+            newParams.set('tagId', String(tagId));
+        }
+        newParams.set('page', '1');
+        setSearchParams(newParams);
     };
 
     const handlePauseSite = async (site: Site) => {
         try {
-            await siteApi.pauseSite(site.id, 'Manual pause');
+            await siteApi.pauseSite(site.id, '用户暂停');
+            showNotification('success', `${site.name} 已暂停`);
             loadSites();
-        } catch (error) {
+        } catch (error: any) {
             console.error('Failed to pause site:', error);
+            showNotification('error', error.message || '暂停失败');
         }
         setMenuOpen(null);
     };
@@ -92,9 +118,29 @@ export default function Sites() {
     const handleResumeSite = async (site: Site) => {
         try {
             await siteApi.resumeSite(site.id);
+            showNotification('success', `${site.name} 已恢复运行`);
             loadSites();
-        } catch (error) {
+        } catch (error: any) {
             console.error('Failed to resume site:', error);
+            showNotification('error', error.message || '恢复失败');
+        }
+        setMenuOpen(null);
+    };
+
+    const handleCrawlSite = async (site: Site) => {
+        try {
+            const response = await fetch(`/api/sites/${site.id}/crawl`, { method: 'POST' });
+            const data = await response.json();
+            
+            if (data.success) {
+                showNotification('success', `采集成功！已生成第 ${data.data.version?.id} 号版本`);
+                loadSites();
+            } else {
+                showNotification('error', data.error || '采集失败');
+            }
+        } catch (error: any) {
+            console.error('Failed to crawl site:', error);
+            showNotification('error', error.message || '采集失败');
         }
         setMenuOpen(null);
     };
@@ -103,20 +149,12 @@ export default function Sites() {
         if (confirm(`确定要删除站点 "${site.name}" 吗？`)) {
             try {
                 await siteApi.deleteSite(site.id);
+                showNotification('success', '站点已删除');
                 loadSites();
-            } catch (error) {
+            } catch (error: any) {
                 console.error('Failed to delete site:', error);
+                showNotification('error', error.message || '删除失败');
             }
-        }
-        setMenuOpen(null);
-    };
-
-    const handleCrawlSite = async (site: Site) => {
-        try {
-            await fetch(`/api/sites/${site.id}/crawl`, { method: 'POST' });
-            alert('采集任务已触发');
-        } catch (error) {
-            console.error('Failed to crawl site:', error);
         }
         setMenuOpen(null);
     };
@@ -136,6 +174,14 @@ export default function Sites() {
 
     return (
         <div className="space-y-6">
+            {notification && (
+                <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg ${
+                    notification.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+                }`}>
+                    {notification.message}
+                </div>
+            )}
+
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900">站点清单</h1>
@@ -179,31 +225,23 @@ export default function Sites() {
 
                     {tags.length > 0 && (
                         <div className="flex gap-2 mt-4 flex-wrap">
-                            {tags.map((tag) => (
-                                <button
-                                    key={tag.id}
-                                    onClick={() => {
-                                        const newParams = new URLSearchParams(searchParams);
-                                        if (selectedTags.includes(tag.id)) {
-                                            setSelectedTags(selectedTags.filter((id) => id !== tag.id));
-                                            newParams.delete('tagId');
-                                        } else {
-                                            setSelectedTags([...selectedTags, tag.id]);
-                                            newParams.set('tagId', String(tag.id));
-                                        }
-                                        newParams.set('page', '1');
-                                        setSearchParams(newParams);
-                                    }}
-                                    className={`px-3 py-1 rounded-full text-sm transition-colors ${
-                                        selectedTags.includes(tag.id)
-                                            ? 'text-white'
-                                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                                    }`}
-                                    style={selectedTags.includes(tag.id) ? { backgroundColor: tag.color } : {}}
-                                >
-                                    {tag.name}
-                                </button>
-                            ))}
+                            {tags.map((tag) => {
+                                const isSelected = searchParams.get('tagId') === String(tag.id);
+                                return (
+                                    <button
+                                        key={tag.id}
+                                        onClick={() => handleTagFilter(tag.id)}
+                                        className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                                            isSelected
+                                                ? 'text-white'
+                                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                        }`}
+                                        style={isSelected ? { backgroundColor: tag.color } : {}}
+                                    >
+                                        {tag.name}
+                                    </button>
+                                );
+                            })}
                         </div>
                     )}
                 </div>

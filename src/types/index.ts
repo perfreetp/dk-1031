@@ -41,6 +41,11 @@ export interface Version {
     is_archived: number;
     created_at: string;
     screenshots?: Screenshot[];
+    site?: {
+        id: number;
+        name: string;
+        url: string;
+    };
 }
 
 export interface Screenshot {

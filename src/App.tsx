@@ -7,6 +7,7 @@ import AddSite from './pages/AddSite';
 import Alerts from './pages/Alerts';
 import Logs from './pages/Logs';
 import Archives from './pages/Archives';
+import VersionCompare from './pages/VersionCompare';
 import Settings from './pages/Settings';
 
 const queryClient = new QueryClient({
@@ -31,7 +32,8 @@ function App() {
                         <Route path="sites/:id/edit" element={<AddSite />} />
                         <Route path="archives" element={<Archives />} />
                         <Route path="archives/:siteId" element={<Archives />} />
-                        <Route path="archives/compare" element={<Archives />} />
+                        <Route path="archives/compare" element={<VersionCompare />} />
+                        <Route path="archives/:siteId/:versionId" element={<Archives />} />
                         <Route path="alerts" element={<Alerts />} />
                         <Route path="logs" element={<Logs />} />
                         <Route path="settings" element={<Settings />} />
