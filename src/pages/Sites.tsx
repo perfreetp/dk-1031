@@ -10,20 +10,21 @@ export default function Sites() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const { sites, tags, isLoading, pagination, setSites, setTags, setLoading, setPagination } = useSiteStore();
-    const [statusFilter, setStatusFilter] = useState<string>(searchParams.get('status') || '');
-    const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
+    const [statusFilter, setStatusFilter] = useState<string>('');
+    const [searchQuery, setSearchQuery] = useState<string>('');
     const [menuOpen, setMenuOpen] = useState<number | null>(null);
     const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
     useEffect(() => {
+        const status = searchParams.get('status') || '';
+        const search = searchParams.get('search') || '';
+        
+        setStatusFilter(status);
+        setSearchQuery(search);
+        
         loadSites();
         loadTags();
     }, [searchParams]);
-
-    useEffect(() => {
-        setStatusFilter(searchParams.get('status') || '');
-        setSearchQuery(searchParams.get('search') || '');
-    }, []);
 
     const loadSites = async () => {
         try {
@@ -47,9 +48,6 @@ export default function Sites() {
             const response = await siteApi.getSites(params);
             setSites(response.data.data);
             setPagination(response.data.pagination);
-            
-            // Update filter states
-            setStatusFilter(status || '');
         } catch (error: any) {
             console.error('Failed to load sites:', error);
             showNotification('error', error.message || '加载站点失败');

@@ -6,6 +6,9 @@ export interface Site {
     status: 'active' | 'paused' | 'error';
     frequency: string;
     rules: CrawlRules;
+    tagIds?: number[];
+    retention_policy?: any;
+    archive_rules?: any;
     created_at: string;
     updated_at: string;
     last_crawl_at: string | null;
@@ -39,6 +42,7 @@ export interface Version {
     summary: string | null;
     html: string | null;
     is_archived: number;
+    is_important: number;
     created_at: string;
     screenshots?: Screenshot[];
     site?: {

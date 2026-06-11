@@ -110,6 +110,11 @@ export default function SettingsPage() {
             const sitesResponse = await siteApi.getSites({ pageSize: 1000 });
             const sites = sitesResponse.data.data;
             
+            const sitePolicies = new Map(sites.map(s => [s.id, {
+                retention_policy: s.retention_policy,
+                archive_rules: s.archive_rules
+            }]));
+            
             const allVersions: any[] = [];
             for (const site of sites) {
                 try {
@@ -118,7 +123,9 @@ export default function SettingsPage() {
                         allVersions.push(...versionResponse.data.data.map((v: any) => ({
                             ...v,
                             site_name: site.name,
-                            site_url: site.url
+                            site_url: site.url,
+                            site_retention_policy: site.retention_policy,
+                            site_archive_rules: site.archive_rules
                         })));
                     }
                 } catch (error) {
@@ -144,23 +151,46 @@ export default function SettingsPage() {
             '标题', 
             '摘要', 
             '是否归档',
+            '是否重要',
             '状态',
             '内容长度',
+            '保留策略_最大版本数',
+            '保留策略_保留天数',
+            '保留策略_自动归档',
+            '归档规则_自动归档',
+            '归档规则_归档天数',
+            '归档规则_重要关键词',
             '采集时间',
             '版本创建时间'
         ];
-        const rows = versions.map(v => [
-            v.id,
-            v.site_name || '',
-            v.site_url || '',
-            v.title || '',
-            v.summary || '',
-            v.is_archived ? '是' : '否',
-            v.is_archived ? '已归档' : '活跃',
-            v.content ? v.content.length : 0,
-            new Date(v.created_at).toLocaleString('zh-CN'),
-            v.created_at
-        ]);
+        const rows = versions.map(v => {
+            const retentionPolicy = typeof v.site_retention_policy === 'string' 
+                ? JSON.parse(v.site_retention_policy) 
+                : v.site_retention_policy || {};
+            const archiveRules = typeof v.site_archive_rules === 'string' 
+                ? JSON.parse(v.site_archive_rules) 
+                : v.site_archive_rules || {};
+            
+            return [
+                v.id,
+                v.site_name || '',
+                v.site_url || '',
+                v.title || '',
+                v.summary || '',
+                v.is_archived ? '是' : '否',
+                v.is_important ? '是' : '否',
+                v.is_archived ? '已归档' : (v.is_important ? '重要' : '活跃'),
+                v.content ? v.content.length : 0,
+                retentionPolicy.maxVersions || 30,
+                retentionPolicy.retainDays || 90,
+                retentionPolicy.autoArchive ? '是' : '否',
+                archiveRules.autoArchive ? '是' : '否',
+                archiveRules.archiveAfterDays || 30,
+                (archiveRules.importantKeywords || []).join('; '),
+                new Date(v.created_at).toLocaleString('zh-CN'),
+                v.created_at
+            ];
+        });
         
         return [headers, ...rows]
             .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))

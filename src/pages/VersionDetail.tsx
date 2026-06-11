@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Calendar, Globe, Image, FileText, Tag, CheckCircle, XCircle, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Calendar, Globe, Image, FileText, Star, CheckCircle, XCircle, Loader2, AlertCircle } from 'lucide-react';
 import { Card, Button, Badge, LoadingSpinner } from '../components/common';
 import { versionApi } from '../services/api';
 
@@ -11,6 +11,7 @@ export default function VersionDetail() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [version, setVersion] = useState<any>(null);
+    const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
     useEffect(() => {
         if (versionId) {
@@ -33,6 +34,31 @@ export default function VersionDetail() {
             setError(error.message || '加载版本详情失败');
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const showNotification = (type: 'success' | 'error', message: string) => {
+        setNotification({ type, message });
+        setTimeout(() => setNotification(null), 3000);
+    };
+
+    const handleMarkImportant = async () => {
+        try {
+            await versionApi.markImportant(version.id);
+            showNotification('success', '已标记为重要更新');
+            loadVersion(version.id);
+        } catch (error: any) {
+            showNotification('error', error.message || '标记失败');
+        }
+    };
+
+    const handleUnmarkImportant = async () => {
+        try {
+            await versionApi.unmarkImportant(version.id);
+            showNotification('success', '已取消重要更新标记');
+            loadVersion(version.id);
+        } catch (error: any) {
+            showNotification('error', error.message || '取消标记失败');
         }
     };
 
@@ -62,6 +88,19 @@ export default function VersionDetail() {
     if (error || !version) {
         return (
             <div className="space-y-6">
+                {notification && (
+                    <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg ${
+                        notification.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+                    }`}>
+                        {notification.type === 'success' ? (
+                            <CheckCircle className="w-5 h-5" />
+                        ) : (
+                            <XCircle className="w-5 h-5" />
+                        )}
+                        <span>{notification.message}</span>
+                    </div>
+                )}
+                
                 <Button variant="ghost" onClick={handleBack}>
                     <ArrowLeft className="w-4 h-4 mr-2" />
                     返回档案库
@@ -80,6 +119,19 @@ export default function VersionDetail() {
 
     return (
         <div className="space-y-6 max-w-5xl">
+            {notification && (
+                <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg ${
+                    notification.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+                }`}>
+                    {notification.type === 'success' ? (
+                        <CheckCircle className="w-5 h-5" />
+                    ) : (
+                        <XCircle className="w-5 h-5" />
+                    )}
+                    <span>{notification.message}</span>
+                </div>
+            )}
+
             <div className="flex items-center justify-between">
                 <Button variant="ghost" onClick={handleBack}>
                     <ArrowLeft className="w-4 h-4 mr-2" />
@@ -101,6 +153,12 @@ export default function VersionDetail() {
                     <Badge variant={version.is_archived ? 'default' : 'info'}>
                         {version.is_archived ? '已归档' : '活跃'}
                     </Badge>
+                    {version.is_important === 1 && (
+                        <Badge variant="warning">
+                            <Star size={12} className="mr-1" />
+                            重要
+                        </Badge>
+                    )}
                 </div>
             </div>
 
@@ -229,6 +287,33 @@ export default function VersionDetail() {
                                 <Badge variant={version.is_archived ? 'default' : 'success'}>
                                     {version.is_archived ? '已归档' : '活跃'}
                                 </Badge>
+                            </dd>
+                        </div>
+                        <div>
+                            <dt className="text-slate-500">重要更新</dt>
+                            <dd className="font-medium mt-1">
+                                {version.is_important ? (
+                                    <Badge variant="warning">
+                                        <Star size={12} className="mr-1" />
+                                        是
+                                    </Badge>
+                                ) : (
+                                    <Badge variant="default">否</Badge>
+                                )}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt className="text-slate-500">操作</dt>
+                            <dd className="mt-1">
+                                {version.is_important ? (
+                                    <Button variant="secondary" size="sm" onClick={handleUnmarkImportant}>
+                                        取消重要标记
+                                    </Button>
+                                ) : (
+                                    <Button variant="secondary" size="sm" onClick={handleMarkImportant}>
+                                        标记为重要
+                                    </Button>
+                                )}
                             </dd>
                         </div>
                         {version.site && (

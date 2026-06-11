@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Archive, Calendar, Search, Eye, GitCompare, CheckCircle, XCircle, Loader2, Check, Square } from 'lucide-react';
+import { Archive, Calendar, Search, Eye, GitCompare, CheckCircle, XCircle, Loader2, Check, Square, Star } from 'lucide-react';
 import { Card, Button, Badge, EmptyState, LoadingSpinner } from '../components/common';
 import { siteApi, versionApi } from '../services/api';
 import type { Site, Version } from '../types';
@@ -17,7 +17,6 @@ export default function Archives() {
     const [isLoadingVersions, setIsLoadingVersions] = useState(false);
     const [pagination, setPagination] = useState({ total: 0, page: 1, pageSize: 20, totalPages: 0 });
     const [searchQuery, setSearchQuery] = useState('');
-    const [showArchived, setShowArchived] = useState(false);
     const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
     const [selectedVersions, setSelectedVersions] = useState<number[]>([]);
     const [groupBy, setGroupBy] = useState<'all' | 'active' | 'archived' | 'important'>('all');
@@ -39,7 +38,7 @@ export default function Archives() {
         if (selectedSite) {
             loadVersions(selectedSite.id);
         }
-    }, [selectedSite, showArchived]);
+    }, [selectedSite]);
 
     useEffect(() => {
         if (searchParams.get('compareWith')) {
@@ -72,10 +71,7 @@ export default function Archives() {
         try {
             setIsLoadingVersions(true);
             setSelectedVersions([]);
-            const response = await versionApi.getVersions(siteId, { 
-                pageSize: 50,
-                archived: showArchived ? undefined : undefined
-            });
+            const response = await versionApi.getVersions(siteId, { pageSize: 100 });
             setVersions(response.data.data);
             setPagination(response.data.pagination);
         } catch (error: any) {
@@ -111,6 +107,30 @@ export default function Archives() {
             }
         } catch (error: any) {
             showNotification('error', error.message || '取消归档失败');
+        }
+    };
+
+    const handleMarkImportant = async (id: number) => {
+        try {
+            await versionApi.markImportant(id);
+            showNotification('success', '已标记为重要更新');
+            if (selectedSite) {
+                loadVersions(selectedSite.id);
+            }
+        } catch (error: any) {
+            showNotification('error', error.message || '标记失败');
+        }
+    };
+
+    const handleUnmarkImportant = async (id: number) => {
+        try {
+            await versionApi.unmarkImportant(id);
+            showNotification('success', '已取消重要更新标记');
+            if (selectedSite) {
+                loadVersions(selectedSite.id);
+            }
+        } catch (error: any) {
+            showNotification('error', error.message || '取消标记失败');
         }
     };
 
@@ -152,15 +172,16 @@ export default function Archives() {
         
         const matchesGroup = groupBy === 'all' || 
             (groupBy === 'archived' && v.is_archived) ||
-            (groupBy === 'active' && !v.is_archived);
+            (groupBy === 'active' && !v.is_archived && !v.is_important) ||
+            (groupBy === 'important' && v.is_important);
         
         return matchesSearch && matchesGroup;
     });
 
     const groupedVersions = {
-        active: filteredVersions.filter(v => !v.is_archived),
+        active: filteredVersions.filter(v => !v.is_archived && !v.is_important),
         archived: filteredVersions.filter(v => v.is_archived),
-        important: filteredVersions.filter(v => !v.is_archived).slice(0, 5)
+        important: filteredVersions.filter(v => v.is_important)
     };
 
     if (isLoading) {
@@ -292,7 +313,7 @@ export default function Archives() {
                                         <p className="text-sm text-slate-600">
                                             {groupBy === 'active' && `活跃版本：${groupedVersions.active.length} 个`}
                                             {groupBy === 'archived' && `已归档版本：${groupedVersions.archived.length} 个`}
-                                            {groupBy === 'important' && `最近更新：${groupedVersions.important.length} 个`}
+                                            {groupBy === 'important' && `重要更新：${groupedVersions.important.length} 个`}
                                         </p>
                                     </div>
                                 )}
@@ -317,7 +338,7 @@ export default function Archives() {
                                             <div className="flex-1">
                                                 <div className="flex items-start justify-between">
                                                     <div className="flex-1">
-                                                        <div className="flex items-center gap-2 mb-1">
+                                                        <div className="flex items-center gap-2 mb-1 flex-wrap">
                                                             <Calendar size={14} className="text-slate-400" />
                                                             <span className="text-sm text-slate-500">
                                                                 {new Date(version.created_at).toLocaleString('zh-CN')}
@@ -325,6 +346,12 @@ export default function Archives() {
                                                             <Badge variant={version.is_archived ? 'default' : 'info'}>
                                                                 {version.is_archived ? '已归档' : '活跃'}
                                                             </Badge>
+                                                            {version.is_important === 1 && (
+                                                                <Badge variant="warning">
+                                                                    <Star size={12} className="mr-1" />
+                                                                    重要
+                                                                </Badge>
+                                                            )}
                                                             {version.site && (
                                                                 <Badge variant="info">
                                                                     {version.site.name}
@@ -363,6 +390,23 @@ export default function Archives() {
                                                                 title="与上一版本对比"
                                                             >
                                                                 <GitCompare className="w-4 h-4" />
+                                                            </Button>
+                                                        )}
+                                                        {version.is_important ? (
+                                                            <Button
+                                                                variant="secondary"
+                                                                size="sm"
+                                                                onClick={() => handleUnmarkImportant(version.id)}
+                                                            >
+                                                                取消重要
+                                                            </Button>
+                                                        ) : (
+                                                            <Button
+                                                                variant="secondary"
+                                                                size="sm"
+                                                                onClick={() => handleMarkImportant(version.id)}
+                                                            >
+                                                                标记重要
                                                             </Button>
                                                         )}
                                                         {version.is_archived ? (

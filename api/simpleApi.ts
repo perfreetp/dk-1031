@@ -276,6 +276,7 @@ router.post('/sites/:id/crawl', (req, res) => {
             summary: `第 ${(db.getVersions().filter(v => v.site_id === siteId).length + 1)} 次采集记录`,
             html: `<html><body><h1>${site.name}</h1><p>采集时间: ${new Date().toLocaleString('zh-CN')}</p></body></html>`,
             is_archived: 0,
+            is_important: 0,
             created_at: new Date().toISOString()
         };
         db.addVersion(version);
@@ -458,6 +459,34 @@ router.post('/versions/:id/unarchive', (req, res) => {
         if (!version) return res.status(404).json({ success: false, error: '版本不存在' });
 
         db.updateVersion(parseInt(req.params.id), { is_archived: 0 });
+        
+        const updated = db.getVersion(parseInt(req.params.id));
+        res.json({ success: true, data: updated });
+    } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+router.post('/versions/:id/mark-important', (req, res) => {
+    try {
+        const version = db.getVersion(parseInt(req.params.id));
+        if (!version) return res.status(404).json({ success: false, error: '版本不存在' });
+
+        db.updateVersion(parseInt(req.params.id), { is_important: 1 });
+        
+        const updated = db.getVersion(parseInt(req.params.id));
+        res.json({ success: true, data: updated });
+    } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+router.post('/versions/:id/unmark-important', (req, res) => {
+    try {
+        const version = db.getVersion(parseInt(req.params.id));
+        if (!version) return res.status(404).json({ success: false, error: '版本不存在' });
+
+        db.updateVersion(parseInt(req.params.id), { is_important: 0 });
         
         const updated = db.getVersion(parseInt(req.params.id));
         res.json({ success: true, data: updated });

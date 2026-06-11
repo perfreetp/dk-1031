@@ -80,6 +80,8 @@ export const versionApi = {
     deleteVersion: (id: number) => fetchApi<any>(`/versions/${id}`, { method: 'DELETE' }),
     archiveVersion: (id: number) => fetchApi<any>(`/versions/${id}/archive`, { method: 'POST' }),
     unarchiveVersion: (id: number) => fetchApi<any>(`/versions/${id}/unarchive`, { method: 'POST' }),
+    markImportant: (id: number) => fetchApi<any>(`/versions/${id}/mark-important`, { method: 'POST' }),
+    unmarkImportant: (id: number) => fetchApi<any>(`/versions/${id}/unmark-important`, { method: 'POST' }),
     compareVersions: (versionId1: number, versionId2: number) =>
         fetchApi<any>(`/versions/compare`, {
             method: 'POST',
